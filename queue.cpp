@@ -16,13 +16,20 @@ class lockfreeQueue {
 	}
 
 	void* dequeue() {
+		node* temp = NULL;
+		void* data = NULL;
 		while (true) {
-			temp = (node*)InterlockedExchangePointer((PVOID*)&(out->next), temp);
-			if (temp != NULL) {
-				(node*)InterlockedExchangePointer((PVOID*)&out, temp);
-				data = temp->data;
-				delete(temp);
-				return data;
+			if (out != NULL) { 
+				temp = (node*)InterlockedExchangePointer((PVOID*)&out, temp);
+				if (temp != NULL) {
+					while (temp->next == NULL) {
+
+					};
+					InterlockedExchangePointer((PVOID*)&out, temp->next);
+					data = temp->data;
+					delete(temp);
+					return data;
+				}
 			}
 		}
 	}
