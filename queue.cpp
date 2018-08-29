@@ -35,6 +35,4 @@ private:
 
 	__declspec(align(64))node* in;
 	__declspec(align(64))node* out;
-
-	__declspec(align(64))LONG counter;
 };
