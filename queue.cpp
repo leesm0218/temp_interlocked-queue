@@ -10,16 +10,18 @@ public:
 	lockfreeQueue(int logTwoSize) {
 		int counter = 0;
 		if (logTwoSize > 4 && logTwoSize < 10) {
-			buffer_size = 1LL << logTwoSize;
-			buffer = new __declspec(align(64))node[buffer_size];
-			for (counter = 0; counter < buffer_size; counter++) {
+			bufferSize = 1LL << logTwoSize;
+			buffer = new node[bufferSize];
+
+			for (counter = 0; counter < bufferSize; counter++) {
 				buffer[counter].data = NULL;
-				buffer[counter].local_inOrder = 0;
-				buffer[counter].local_outOrder = 0;
+				buffer[counter].inOrder = 0;
+				buffer[counter].outOrder = 0;
 			}
-			local_shift = logTwoSize;
-			local_max = global_max >> local_shift;
-			local_location_mask = ~(global_max << logTwoSize);
+
+			localShift = logTwoSize;
+			localMax = memberMaxOrder >> localShift;
+			localMask = ~(memberMaxOrder << logTwoSize);
 			int a = 0;
 		}
 		else {
@@ -28,73 +30,71 @@ public:
 	}
 
 	void push(ULONG64* data) {
-		ULONG64 global_order = InterlockedIncrement(&global_inOrder);
-		if (global_order > global_max) {
-			InterlockedAnd(&global_inOrder, global_max);
-			global_order = global_order & global_max;
-			if (global_order == 0) {
-				global_order = global_max;
+		ULONG64 localOrder = InterlockedIncrement(&memberInOrder);
+		if (localOrder > memberMaxOrder) {
+			InterlockedAnd(&memberInOrder, memberMaxOrder);
+			localOrder = localOrder & memberMaxOrder;
+			if (localOrder == 0) {
+				localOrder = memberMaxOrder;
 			}
 			else {
-				global_order = global_order - 1;
+				localOrder = localOrder - 1;
 			}
 		}
 		else {
-			global_order = global_order - 1;
+			localOrder = localOrder - 1;
 		}
 
-		ULONG64 local_location = global_order & local_location_mask;
-		ULONG64 local_order = global_order >> local_shift;
+		ULONG64 inLocation = localOrder & localMask;
+		ULONG64 inOrder = localOrder >> localShift;
 
-		while (buffer[local_location].local_inOrder != local_order) {		}
-		while (buffer[local_location].data != NULL) {		}
+		while (buffer[inLocation].inOrder != inOrder) {}
+		while (buffer[inLocation].data != NULL) {}
 
-		buffer[local_location].data = data;
-		InterlockedIncrement(&buffer[local_location].local_inOrder);
+		buffer[inLocation].data = data;
+		InterlockedIncrement(&buffer[inLocation].inOrder);
 
-		if (buffer[local_location].local_inOrder > local_max) {
-			InterlockedAnd(&(buffer[local_location].local_inOrder), local_max);
+		if (buffer[inLocation].inOrder > localMax) {
+			InterlockedAnd(&(buffer[inLocation].inOrder), localMax);
 		}
-
-		if (global_order % 10000 == 0) {
-			std::cout << global_order / 10000 << "0000push\n";
+		if (localOrder % 10000 == 0) {
+			std::cout << localOrder << "push\n";
 		}
 
 	}
 
 	ULONG64* pop() {
-		ULONG64 global_order = InterlockedIncrement(&global_outOrder);
-		if (global_order > global_max) {
-			InterlockedAnd(&global_outOrder, global_max);
-			global_order = global_order & global_max;
-			if (global_order == 0) {
-				global_order = global_max;
+		ULONG64 localOrder = InterlockedIncrement(&memberOutOrder);
+		if (localOrder > memberMaxOrder) {
+			InterlockedAnd(&memberOutOrder, memberMaxOrder);
+			localOrder = localOrder & memberMaxOrder;
+			if (localOrder == 0) {
+				localOrder = memberMaxOrder;
 			}
 			else {
-				global_order = global_order - 1;
+				localOrder = localOrder - 1;
 			}
 		}
 		else {
-			global_order = global_order - 1;
+			localOrder = localOrder - 1;
 		}
 
-		ULONG64 local_location = global_order & local_location_mask;
-		ULONG64 local_order = global_order >> local_shift;
+		ULONG64 outLocation = localOrder & localMask;
+		ULONG64 outOrder = localOrder >> localShift;
 
-		while (buffer[local_location].local_outOrder != local_order) {		}
+		while (buffer[outLocation].outOrder != outOrder) {}
+		while (buffer[outLocation].data == NULL) {}
 
-		while (buffer[local_location].data == NULL) {		}
+		ULONG64* data = buffer[outLocation].data;
+		buffer[outLocation].data = NULL;
+		InterlockedIncrement(&buffer[outLocation].outOrder);
 
-		ULONG64* data = buffer[local_location].data;
-		buffer[local_location].data = NULL;
-		InterlockedIncrement(&buffer[local_location].local_outOrder);
-
-		if (buffer[local_location].local_outOrder > local_max) {
-			InterlockedAnd(&(buffer[local_location].local_outOrder), local_max);
+		if (buffer[outLocation].outOrder > localMax) {
+			InterlockedAnd(&(buffer[outLocation].outOrder), localMax);
 		}
 
-		if (global_order % 10000 == 0) {
-			std::cout << global_order / 10000 << "0000pop\n";
+		if (localOrder % 10000 == 0) {
+			std::cout << localOrder << "pop\n";
 		}
 		return data;
 
@@ -102,23 +102,22 @@ public:
 
 private:
 	struct node {
-		__declspec(align(64))ULONG64 local_inOrder = 0;
-		__declspec(align(64))ULONG64 local_outOrder = 0;
+		__declspec(align(64))ULONG64 inOrder = 0;
+		__declspec(align(64))ULONG64 outOrder = 0;
 		__declspec(align(64))ULONG64* data = NULL;
 	};
 
 	__declspec(align(64))volatile node* buffer;
-	__declspec(align(64))ULONG64 global_inOrder = 0;
-	__declspec(align(64))ULONG64 global_outOrder = 0;
+	__declspec(align(64))ULONG64 memberInOrder = 0;
+	__declspec(align(64))ULONG64 memberOutOrder = 0;
+	__declspec(align(64))ULONG64 memberMaxOrder = (MAXULONG64) >> 1;
 
-	__declspec(align(64))ULONG64 global_max = (MAXULONG64) >> 1;
-
-	__declspec(align(64))ULONG64 local_shift;
-	__declspec(align(64))ULONG64 local_max;
-	__declspec(align(64))ULONG64 local_location_mask;
+	__declspec(align(64))ULONG64 localShift;
+	__declspec(align(64))ULONG64 localMax;
+	__declspec(align(64))ULONG64 localMask;
 
 
-	__declspec(align(64))ULONG64 buffer_size;
+	__declspec(align(64))ULONG64 bufferSize;
 };
 
 
